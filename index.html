@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guide maker</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header>
+      <h1>Guide maker</h1>
+      
+    </header>
+
+    <main>
+      <section class="controls">
+        <div class="control-group">
+          <label for="backgroundInput">Background image</label>
+          <input type="file" id="backgroundInput" accept="image/*">
+        </div>
+
+        <div class="control-group small-grid">
+          <div>
+            <label for="textColor">Text color</label>
+            <input type="color" id="textColor" value="#ffffff">
+          </div>
+        </div>
+
+        <input type="file" id="avatarFileInput" accept="image/*" style="display:none">
+
+        <div class="buttons">
+          <button id="downloadButton">Download PNG</button>
+        </div>
+      </section>
+
+      <section class="preview">
+        <h2>Preview</h2>
+        <div class="canvas-wrap">
+          <canvas id="previewCanvas" width="1280" height="720"></canvas>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
