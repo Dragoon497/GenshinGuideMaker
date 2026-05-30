@@ -17,8 +17,16 @@
     <main>
       <section class="controls">
         <div class="control-group">
-          <label for="backgroundInput">Background image</label>
-          <input type="file" id="backgroundInput" accept="image/*">
+          <label>Choose a website background</label>
+          <input type="file" id="backgroundFile" accept="image/*">
+          <div id="backgroundPresets" class="preset-grid"></div>
+        </div>
+
+        <div class="control-group">
+          <label>Choose a website avatar</label>
+          <input type="text" id="avatarSearch" placeholder="Search avatars...">
+          <div id="avatarPresets" class="preset-grid"></div>
+          <p id="avatarPickerHint" class="avatar-picker-hint">Click a slot on the canvas first, then pick a stored avatar here.</p>
         </div>
 
         <div class="control-group small-grid">
@@ -27,8 +35,6 @@
             <input type="color" id="textColor" value="#ffffff">
           </div>
         </div>
-
-        <input type="file" id="avatarFileInput" accept="image/*" style="display:none">
 
         <div class="buttons">
           <button id="downloadButton">Download PNG</button>
@@ -44,6 +50,7 @@
     </main>
   </div>
 
+  <script src="images/presets.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

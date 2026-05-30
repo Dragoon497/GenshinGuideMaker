@@ -1,10 +1,55 @@
-const backgroundInput = document.getElementById('backgroundInput');
 let noteTextValue = '';
 const textColor = document.getElementById('textColor');
 const downloadButton = document.getElementById('downloadButton');
-const avatarFileInput = document.getElementById('avatarFileInput');
 const canvas = document.getElementById('previewCanvas');
 const ctx = canvas.getContext('2d');
+const backgroundPresetsContainer = document.getElementById('backgroundPresets');
+const backgroundFileInput = document.getElementById('backgroundFile');
+const avatarPresetsContainer = document.getElementById('avatarPresets');
+const avatarSearchInput = document.getElementById('avatarSearch');
+const avatarPickerHint = document.getElementById('avatarPickerHint');
+
+const presetBackgrounds = [];
+const avatarPresets = [];
+let avatarSearchQuery = '';
+let selectedBackgroundIndex = null;
+const PRESET_MAX_COUNT = 40;
+const PRESET_EXTENSIONS = ['svg', 'png', 'jpg', 'jpeg', 'webp'];
+
+function loadPresetsFromGlobal() {
+  if (Array.isArray(window.PRESET_BACKGROUNDS)) {
+    presetBackgrounds.length = 0;
+    presetBackgrounds.push(...window.PRESET_BACKGROUNDS);
+  }
+  if (Array.isArray(window.AVATAR_PRESETS)) {
+    avatarPresets.length = 0;
+    avatarPresets.push(...window.AVATAR_PRESETS);
+  }
+}
+
+async function loadPresetsFromJson() {
+  try {
+    const response = await fetch('images/presets.json');
+    if (!response.ok) return;
+    const data = await response.json();
+    if (Array.isArray(data.backgrounds)) {
+      presetBackgrounds.length = 0;
+      presetBackgrounds.push(...data.backgrounds);
+    }
+    if (Array.isArray(data.avatars)) {
+      avatarPresets.length = 0;
+      avatarPresets.push(...data.avatars);
+    }
+  } catch (error) {
+    // Manifest not available or failed to load.
+  }
+}
+
+async function loadPresets() {
+  loadPresetsFromGlobal();
+  if (presetBackgrounds.length || avatarPresets.length) return;
+  await loadPresetsFromJson();
+}
 
 const avatarSlots = [
   { x: 173, y: 187, r: 40 },
@@ -129,37 +174,171 @@ function drawLabel(labelKey, x, y, align = 'center', baseline = 'middle', fixedT
   }
 }
 
-function loadAvatarImage(index, file) {
-  if (!file) {
-    avatarImages[index] = null;
-    renderCanvas();
+function openAvatarPicker(index) {
+  activeAvatarIndex = index;
+  updateAvatarPickerHint(`Slot ${index + 1} selected. Choose a website avatar below.`);
+  renderCanvas();
+}
+
+function getFilteredAvatarPresets() {
+  const query = avatarSearchQuery.trim().toLowerCase();
+  const filtered = avatarPresets.map((preset, index) => ({ preset, index }));
+  if (!query) return filtered;
+  return filtered.filter(({ preset }) => preset.label.toLowerCase().includes(query));
+}
+
+function renderAvatarPresets() {
+  if (!avatarPresetsContainer) return;
+  avatarPresetsContainer.innerHTML = '';
+  const filtered = getFilteredAvatarPresets();
+
+  if (filtered.length === 0) {
+    const message = document.createElement('div');
+    message.className = 'preset-empty';
+    message.textContent = 'No avatars match your search.';
+    avatarPresetsContainer.appendChild(message);
     return;
   }
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    const img = new Image();
-    img.onload = () => {
-      avatarImages[index] = img;
-      renderCanvas();
-    };
-    img.src = reader.result;
+  filtered.forEach(({ preset, index }) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'preset-item';
+    button.title = preset.label;
+    button.innerHTML = `
+      <img src="${preset.src}" alt="${preset.label}">
+      <span>${preset.label}</span>
+    `;
+    button.addEventListener('click', () => selectAvatarPreset(index));
+    avatarPresetsContainer.appendChild(button);
+  });
+}
+
+function selectAvatarPreset(index) {
+  const preset = avatarPresets[index];
+  if (!preset) return;
+  if (activeAvatarIndex === null) {
+    updateAvatarPickerHint('Click a slot on the canvas first, then choose a stored avatar.');
+    return;
+  }
+  const img = new Image();
+  img.onload = () => {
+    avatarImages[activeAvatarIndex] = img;
+    updateAvatarPickerHint(`Avatar placed in slot ${activeAvatarIndex + 1}. Click another slot to change it.`);
+    activeAvatarIndex = null;
+    renderCanvas();
   };
-  reader.readAsDataURL(file);
+  img.src = preset.src;
 }
 
-function openAvatarPicker(index) {
-  activeAvatarIndex = index;
-  avatarFileInput.value = '';
-  avatarFileInput.click();
+function loadImageIfExists(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(src);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
 }
 
-avatarFileInput.addEventListener('change', (event) => {
-  const file = event.target.files[0];
-  if (!file || activeAvatarIndex === null) return;
-  loadAvatarImage(activeAvatarIndex, file);
-  activeAvatarIndex = null;
-});
+function friendlyLabelFromFile(path) {
+  const name = path.split('/').pop().replace(/\.[^/.]+$/, '');
+  return name
+    .replace(/[-_]/g, ' ')
+    .replace(/([a-z])([0-9])/g, '$1 $2')
+    .replace(/([0-9])([a-z])/gi, '$1 $2')
+    .replace(/\b([a-z])/g, (m) => m.toUpperCase());
+}
+
+async function buildPresets(folder, prefix, count) {
+  const presets = [];
+  for (let i = 1; i <= count; i += 1) {
+    for (const ext of PRESET_EXTENSIONS) {
+      const src = `${folder}/${prefix}${i}.${ext}`;
+      const exists = await loadImageIfExists(src);
+      if (exists) {
+        presets.push({ src: exists, label: friendlyLabelFromFile(exists) });
+        break;
+      }
+    }
+  }
+  return presets;
+}
+
+async function initPresets() {
+  if (presetBackgrounds.length === 0) {
+    const backgrounds = await buildPresets('images', 'bg', PRESET_MAX_COUNT);
+    presetBackgrounds.push(...backgrounds);
+  }
+  if (avatarPresets.length === 0) {
+    const avatars = await buildPresets('images', 'avatar', PRESET_MAX_COUNT);
+    avatarPresets.push(...avatars);
+  }
+
+  if (presetBackgrounds.length > 0 && selectedBackgroundIndex === null) {
+    selectBackground(0);
+  }
+}
+
+function updateAvatarPickerHint(text) {
+  if (!avatarPickerHint) return;
+  avatarPickerHint.textContent = text;
+}
+
+function createBackgroundPresets() {
+  if (!backgroundPresetsContainer) return;
+  presetBackgrounds.forEach((preset, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'preset-item';
+    button.title = preset.label;
+    button.innerHTML = `
+      <img src="${preset.src}" alt="${preset.label}">
+      <span>${preset.label}</span>
+    `;
+    button.addEventListener('click', () => selectBackground(index));
+    backgroundPresetsContainer.appendChild(button);
+  });
+}
+
+function setSelectedPresetClass() {
+  if (!backgroundPresetsContainer) return;
+  const items = backgroundPresetsContainer.querySelectorAll('.preset-item');
+  items.forEach((item, index) => {
+    item.classList.toggle('selected', index === selectedBackgroundIndex);
+  });
+}
+
+function selectBackground(index) {
+  const preset = presetBackgrounds[index];
+  if (!preset) return;
+  selectedBackgroundIndex = index;
+  const img = new Image();
+  img.onload = () => {
+    backgroundImage = img;
+    setSelectedPresetClass();
+    renderCanvas();
+  };
+  img.src = preset.src;
+}
+
+function loadBackgroundFile(file) {
+  if (!(file instanceof File)) return;
+  const objectUrl = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    backgroundImage = img;
+    selectedBackgroundIndex = null;
+    setSelectedPresetClass();
+    updateAvatarPickerHint(`Loaded background from ${file.name}`);
+    renderCanvas();
+    URL.revokeObjectURL(objectUrl);
+  };
+  img.onerror = () => {
+    updateAvatarPickerHint('That file could not be loaded as a background image.');
+    URL.revokeObjectURL(objectUrl);
+  };
+  img.src = objectUrl;
+}
 
 function getCanvasPointer(event) {
   const rect = canvas.getBoundingClientRect();
@@ -414,28 +593,38 @@ function downloadImage() {
   link.click();
 }
 
-backgroundInput.addEventListener('change', (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const img = new Image();
-    img.onload = () => {
-      backgroundImage = img;
-      renderCanvas();
-    };
-    img.src = reader.result;
-  };
-  reader.readAsDataURL(file);
-});
-
 textColor.addEventListener('input', renderCanvas);
 downloadButton.addEventListener('click', () => {
   renderCanvas();
   downloadImage();
 });
 
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
   resetCanvas();
+  await loadPresets();
+  await initPresets();
+  createBackgroundPresets();
+  renderAvatarPresets();
+  if (backgroundFileInput) {
+    backgroundFileInput.addEventListener('change', (event) => {
+      const file = event.target.files ? event.target.files[0] : null;
+      if (file) {
+        loadBackgroundFile(file);
+      }
+    });
+  }
+
+  if (avatarSearchInput) {
+    avatarSearchInput.addEventListener('input', (event) => {
+      avatarSearchQuery = event.target.value || '';
+      renderAvatarPresets();
+    });
+  }
+
+  if (presetBackgrounds.length === 0 && avatarPresets.length === 0) {
+    updateAvatarPickerHint('No stored presets were found. Add bgN.* or avatarN.* files, or provide images/presets.js with a preset list.');
+  } else {
+    updateAvatarPickerHint('Click a slot on the canvas first, then pick a stored avatar here.');
+  }
   renderCanvas();
 });
